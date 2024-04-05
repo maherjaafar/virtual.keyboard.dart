@@ -12,7 +12,10 @@ class VirtualKeyboard extends StatefulWidget {
   final VirtualKeyboardType type;
 
   /// The text controller
-  final TextEditingController textController;
+  final TextEditingController? textController;
+
+  /// Triggered when a key is pressed.
+  final void Function(VirtualKeyboardKey key)? onKeyPress;
 
   /// Virtual keyboard height. Default is 300
   final double height;
@@ -36,7 +39,8 @@ class VirtualKeyboard extends StatefulWidget {
   VirtualKeyboard({
     Key? key,
     required this.type,
-    required this.textController,
+    this.textController,
+    this.onKeyPress,
     this.builder,
     this.height = _virtualKeyboardDefaultHeight,
     this.textColor = Colors.black,
@@ -45,7 +49,11 @@ class VirtualKeyboard extends StatefulWidget {
     this.keyBackgroundColor = Colors.grey,
     this.keyHighlightColor = Colors.blue,
     this.keyBorderRadius = const BorderRadius.all(Radius.circular(10)),
-  }) : super(key: key);
+  })  : assert(
+          !(textController != null && onKeyPress != null),
+          'You can only use one of textController or onKeyPress',
+        ),
+        super(key: key);
 
   @override
   State<StatefulWidget> createState() {
@@ -92,8 +100,7 @@ class _VirtualKeyboardState extends State<VirtualKeyboard> {
     });
   }
 
-  void textControllerEvent() {
-    var textController = widget.textController;
+  void textControllerEvent(TextEditingController textController) {
     if (textController.selection.toString() != "TextSelection.invalid") {
       cursorPosition = textController.selection;
     } else {
@@ -114,8 +121,8 @@ class _VirtualKeyboardState extends State<VirtualKeyboard> {
     alwaysCaps = widget.alwaysCaps;
     final textController = widget.textController;
     textController
-      ..removeListener(() {})
-      ..addListener(textControllerEvent);
+      ?..removeListener(() {})
+      ..addListener(() => textControllerEvent(textController));
 
     // Init the Text Style for keys.
     textStyle = TextStyle(
@@ -139,6 +146,14 @@ class _VirtualKeyboardState extends State<VirtualKeyboard> {
       default:
         throw new Error();
     }
+  }
+
+  void _onNewKeyPress(VirtualKeyboardKey key) {
+    if (widget.onKeyPress != null) {
+      widget.onKeyPress!(key);
+      return;
+    }
+    _onKeyPress(key, widget.textController!);
   }
 
   Widget _keyLayout(List<List<VirtualKeyboardKey>> layout) {
@@ -240,7 +255,8 @@ class _VirtualKeyboardState extends State<VirtualKeyboard> {
           highlightColor: widget.keyHighlightColor,
           borderRadius: widget.keyBorderRadius,
           onTap: () {
-            _onKeyPress(key);
+            final textController = widget.textController;
+            if (textController != null) _onNewKeyPress(key);
           },
           child: Container(
             width: keyHeight,
@@ -254,8 +270,7 @@ class _VirtualKeyboardState extends State<VirtualKeyboard> {
         ));
   }
 
-  void _onKeyPress(VirtualKeyboardKey key) {
-    var textController = widget.textController;
+  void _onKeyPress(VirtualKeyboardKey key, TextEditingController textController) {
     // Reset text selection when the cursor position is invalid.
     if (cursorPosition != null && cursorPosition!.start > textController.text.length) {
       cursorPosition = TextSelection(
@@ -266,7 +281,7 @@ class _VirtualKeyboardState extends State<VirtualKeyboard> {
 
     if (key.keyType == VirtualKeyboardKeyType.String) {
       String text = textController.text;
-      if (cursorPosition == null) textControllerEvent();
+      if (cursorPosition == null) textControllerEvent(textController);
       textController.text = cursorPosition!.textBefore(text) +
           (isShiftEnabled ? key.capsText! : key.text!) +
           cursorPosition!.textAfter(text);
@@ -280,7 +295,7 @@ class _VirtualKeyboardState extends State<VirtualKeyboard> {
           if (textController.text.length == 0) return;
           if (cursorPosition!.start == 0) return;
           String text = textController.text;
-          if (cursorPosition == null) textControllerEvent();
+          if (cursorPosition == null) textControllerEvent(textController);
           textController.text = cursorPosition!.start == text.length
               ? text.substring(0, text.length - 1)
               : text.substring(0, cursorPosition!.start - 1) +
@@ -327,7 +342,7 @@ class _VirtualKeyboardState extends State<VirtualKeyboard> {
               Timer.periodic(Duration(milliseconds: _virtualKeyboardBackspaceEventPerioud),
                   (timer) {
                 if (longPress) {
-                  _onKeyPress(key);
+                  _onNewKeyPress(key);
                 } else {
                   // Cancel timer.
                   timer.cancel();
@@ -382,7 +397,7 @@ class _VirtualKeyboardState extends State<VirtualKeyboard> {
             }
           }
 
-          _onKeyPress(key);
+          _onNewKeyPress(key);
         },
         child: Container(
           width: keyHeight,
